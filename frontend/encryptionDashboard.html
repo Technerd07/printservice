@@ -1,0 +1,77 @@
+<!-- Encryption dashboard: upload / drag-drop UI, pages, color/B&W, notes, binding, encrypt/cancel -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Encrypt Documents — PrintEase</title>
+
+  <!-- fixed rel -->
+  <link rel="stylesheet" href="./assets/css/encryptionDashboard.css">
+</head>
+<body>
+  <main class="encrypt-wrap">
+    <h1 class="mb-lg">Encrypt Documents</h1>
+
+    <section class="card" aria-labelledby="enc-heading">
+      <h2 id="enc-heading" class="small mb-sm">Upload files (max 5)</h2>
+
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload or drag and drop files">
+        <p><strong>Drag & drop files here</strong> or <button id="btnBrowse" class="btn-ghost" type="button">Browse</button></p>
+        <p class="muted">Allowed: PDFs, DOC(X) Files Only — up to 5 files</p>
+        <input id="fileInput" type="file" accept=".pdf,.doc,.docx,image/*" multiple hidden />
+      </div>
+
+      <div class="files-list" id="filesList" aria-live="polite"></div>
+
+      <form id="encryptForm" class="mt-md" novalidate>
+        <div class="grid-2 mt-lg">
+          <div>
+            <div class="field">
+              <label for="totalPages">Total pages (per upload)</label>
+              <input id="totalPages" name="totalPages" type="number" min="1" max="1000" value="1" required />
+              <div class="muted small">Enter total pages for the selected files (each)</div>
+            </div>
+
+            <div class="field">
+              <label>Print type</label>
+              <div class="binding-options" role="group" aria-label="Print type">
+                <label><input type="radio" name="printType" value="bw" checked /> B&amp;W</label>
+                <label><input type="radio" name="printType" value="color" /> Color</label>
+              </div>
+              <div class="muted small">Choose B&amp;W or Color printing for these files.</div>
+            </div>
+
+            <div class="field">
+              <label for="notes">Additional information</label>
+              <textarea id="notes" name="notes" rows="4" placeholder="Any special instructions..."></textarea>
+            </div>
+          </div>
+
+          <aside>
+            <div class="field">
+              <label>Binding type</label>
+              <div class="binding-options" role="group" aria-label="Binding type">
+                <label><input type="radio" name="binding" value="none" checked /> No binding</label>
+                <label><input type="radio" name="binding" value="soft" /> Soft bind</label>
+                <label><input type="radio" name="binding" value="hard" /> Hard bind</label>
+              </div>
+            </div>
+
+            <div class="field small muted">
+              <strong>Note:</strong> You can select up to 5 files. Remove files from the list if you need to add others.
+            </div>
+          </aside>
+        </div>
+
+        <div class="controls">
+          <button id="btnEncrypt" class="btn-primary" type="submit">Encrypt and Place Order</button>
+          <button id="btnCancel" class="btn-ghost" type="button">Cancel</button>
+        </div>
+      </form>
+    </section>
+
+    <div id="status" class="muted small" aria-live="polite"></div>
+  </main>
+</body>
+</html>

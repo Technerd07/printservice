@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Order Review — PrintEase</title>
+
+  <!-- Global styles -->
+  <link rel="stylesheet" href="./assets/css/orderpage.css">
+</head>
+<body>
+  <main class="encrypt-wrap">
+    <h1 class="mb-lg">Order Review & Payment</h1>
+
+    <section class="card" aria-labelledby="order-heading">
+      <h2 id="order-heading" class="small mb-sm">Verify your information</h2>
+
+      <div class="grid-2 mt-lg">
+        <!-- Left: Customer & Delivery Details -->
+        <div>
+          <form id="orderForm" novalidate>
+            <div class="field">
+              <label for="custName">Full name</label>
+              <input id="custName" name="custName" type="text" placeholder="Jane Doe" required />
+            </div>
+
+            <div class="field">
+              <label for="custEmail">Email</label>
+              <input id="custEmail" name="custEmail" type="email" placeholder="jane@example.com" required />
+            </div>
+
+            <div class="field">
+              <label for="custPhone">Phone</label>
+              <input id="custPhone" name="custPhone" type="tel" placeholder="+91 98765 43210" required />
+            </div>
+
+            <div class="field">
+              <label>Delivery / Pickup</label>
+              <div class="binding-options" role="group" aria-label="Delivery or pickup">
+                <label><input type="radio" name="pickup" value="pickup" checked /> Campus pickup</label>
+                <label><input type="radio" name="pickup" value="delivery" /> Home delivery</label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="address">Delivery address (if delivery)</label>
+              <textarea id="address" name="address" rows="3" placeholder="Building, street, city, pincode"></textarea>
+            </div>
+
+            <hr />
+
+            <h3 class="small mb-sm">Payment method</h3>
+
+            <div class="field">
+              <label>Select payment option</label>
+              <div class="binding-options" role="group" aria-label="Payment method">
+                <label><input type="radio" name="paymentMethod" value="upi" checked /> UPI</label>
+                <label><input type="radio" name="paymentMethod" value="cod" /> Cash on Delivery (COD)</label>
+              </div>
+            </div>
+
+            <div id="codSection" class="field" style="display:none">
+              <div class="muted small" style="background: rgba(15,181,165,0.08); padding:10px; border-radius:8px; border-left:3px solid var(--accent-teal)">
+                ✓ You will pay ₹ 420 when your order is delivered.
+              </div>
+            </div>
+
+            <div class="controls" style="margin-top:18px">
+              <button id="confirmPay" class="btn-primary" type="submit">Confirm &amp; Proceed</button>
+              <button id="editDetails" class="btn-ghost" type="button">Edit Details</button>
+              <a href="./encryptionDashboard.html" class="btn-cancel" style="text-decoration:none;display:inline-block">Cancel</a>
+            </div>
+          </form>
+        </div>
+
+        <!-- Right: Order summary + Map placeholder -->
+        <aside>
+          <div class="field">
+            <label>Order summary</label>
+            <div class="order-summary-box">
+              <div class="summary-row">
+                <div class="muted small">Files</div>
+                <div class="muted small">3</div>
+              </div>
+              <div class="summary-row">
+                <div class="muted small">Pages</div>
+                <div class="muted small">42</div>
+              </div>
+              <div class="summary-row">
+                <div class="muted small">Print type</div>
+                <div class="muted small">B&W</div>
+              </div>
+              <div class="summary-row">
+                <div class="muted small">Binding</div>
+                <div class="muted small">Soft bind</div>
+              </div>
+              <div class="summary-row">
+                <div>Total amount</div>
+                <div>₹ 420</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="field" style="margin-top:18px">
+            <label>Pickup location</label>
+            <!-- Map container: will be initialized by JS with Maps API later -->
+            <div id="map">
+              📍 Map placeholder — will initialize via Maps API
+            </div>
+          </div>
+
+          <div class="field small muted" style="margin-top:12px">
+            <strong>Note:</strong> Please verify all details before confirming. Map and payment integration coming soon.
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <div id="orderStatus" class="muted small" aria-live="polite" style="margin-top:12px"></div>
+  </main>
+
+  <script>
+    // Simple toggle for UPI/COD sections
+    const paymentRadios = document.querySelectorAll('input[name="paymentMethod"]');
+    const upiSection = document.getElementById('upiSection');
+    const codSection = document.getElementById('codSection');
+
+    paymentRadios.forEach(radio => {
+      radio.addEventListener('change', function(){
+        if(this.value === 'upi'){
+          upiSection.style.display = 'block';
+          codSection.style.display = 'none';
+        } else {
+          upiSection.style.display = 'none';
+          codSection.style.display = 'block';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

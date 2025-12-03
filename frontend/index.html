@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PrintEase | Student Print Services</title>
+
+    <!-- Roboto - preload & stylesheet (Google Fonts) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+
+    <!-- External CSS -->
+    <link rel="stylesheet" href="./assets/css/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav id="navbar" aria-label="Main navigation">
+        <div class="container nav-container">
+            <a href="#" class="logo">PrintEase</a>
+
+            <ul class="nav-links" id="navLinks">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#features">Services</a></li>
+                <li><a href="#why-us">Why Us</a></li>
+                <li><a href="#contact">Contact</a></li>
+
+                <!-- optional: add navigation to the encryption page -->
+                <li><a href="./encryptionDashboard.html">Encrypt</a></li>
+            </ul>
+
+            <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">
+                ☰
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero & Login Section -->
+    <section class="hero" id="home">
+        <div class="container hero-grid">
+            <div class="hero-content">
+                <h1>Campus Print Services, Refined</h1>
+                <p class="hero-subtitle mb-lg">
+                    Premium printing solutions designed for academic excellence.
+                    Submit your documents securely, track progress in real-time,
+                    and receive prints that reflect the quality of your work.
+                </p>
+
+                <a href="#login" class="cta-button mb-lg">Start Printing →</a>
+
+                <div class="student-stats">
+                    <div class="stat-item">
+                        <span class="stat-number">24h</span>
+                        <span class="stat-label">Avg. Turnaround</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">50+</span>
+                        <span class="stat-label">Campus Partners</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">10k+</span>
+                        <span class="stat-label">Student Users</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="login-container" id="login" aria-labelledby="loginHeading">
+                <div class="login-header">
+                    <h2 id="loginHeading">Sign-in Portal</h2>
+                    <p>Access your printing dashboard</p>
+                </div>
+
+                <form id="loginForm" novalidate>
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <div class="input-wrapper">
+                            <i aria-hidden="true">✉️</i>
+                            <input type="email" id="email" name="email" placeholder="Email Address" required />
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <div class="input-wrapper">
+                            <i aria-hidden="true">🔒</i>
+                            <input type="password" id="password" name="password" placeholder="••••••••" required />
+                        </div>
+                    </div>
+
+                    <button type="submit" class="login-btn">Sign In to Dashboard</button>
+
+                    <div class="signup-link">
+                        First time here? <a href="#signup">Create account</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <div class="container">
+            <div class="section-header">
+                <h2>Academic Printing Services</h2>
+                <p class="section-subtitle">Tailored solutions for every academic need, from thesis printing to lab reports</p>
+            </div>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon" aria-hidden="true">📄</div>
+                    <h3>Thesis &amp; Dissertation</h3>
+                    <p>Professional binding, premium paper options, and confidential handling for your final projects.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" aria-hidden="true">📊</div>
+                    <h3>Research Papers</h3>
+                    <p>High-resolution printing for charts, graphs, and complex data visualizations.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" aria-hidden="true">🎨</div>
+                    <h3>Portfolio Prints</h3>
+                    <p>Gallery-quality prints for architecture, design, and art portfolios.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" aria-hidden="true">📚</div>
+                    <h3>Course Materials</h3>
+                    <p>Bulk printing for study groups, lecture notes, and course packets.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" aria-hidden="true">🔒</div>
+                    <h3>Secure Document Handling</h3>
+                    <p>Encrypted uploads and confidential processing for sensitive academic work.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Why Choose Us -->
+    <section class="why-us" id="why-us">
+        <div class="container">
+            <div class="section-header">
+                <h2>Built for Academic Success</h2>
+                <p class="section-subtitle">Why thousands of students trust PrintEase for their academic printing needs</p>
+            </div>
+
+            <div class="benefits">
+                <div class="benefit-item">
+                    <h3>🎓 Student-Centric</h3>
+                    <p>Pricing and services designed around academic schedules and budgets.</p>
+                </div>
+
+                <div class="benefit-item">
+                    <h3>📱 Digital-First</h3>
+                    <p>Upload, track, and manage all your print jobs from any device.</p>
+                </div>
+
+                <div class="benefit-item">
+                    <h3>🏆 Quality Assured</h3>
+                    <p>Professional-grade equipment and materials for exceptional results.</p>
+                </div>
+
+                <div class="benefit-item">
+                    <h3>🔄 Sustainable</h3>
+                    <p>Eco-friendly paper options and responsible printing practices.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="contact">
+        <div class="container">
+            <p class="mb-sm">PrintEase Academic Printing Services</p>
+            <p class="mb-sm">Email: theprivateguy2615@proton.me</p>
+            <p class="mb-md">Campus Hotline: +91-123456789</p>
+            <p>&copy; 2025 PrintEase. Supporting academic excellence through premium printing solutions.</p>
+        </div>
+    </footer>
+
+    <!-- External JS (keep scripts in separate file as requested) -->
+    <script src="./assets/js/main.js" defer></script>
+</body>
+</html>
