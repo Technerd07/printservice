@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Encrypt Documents — PrintEase</title>
 
-  <!-- fixed rel -->
+  <!-- CSS stylesheet -->
   <link rel="stylesheet" href="./assets/css/encryptionDashboard.css">
 </head>
 <body>
@@ -16,20 +16,24 @@
     <section class="card" aria-labelledby="enc-heading">
       <h2 id="enc-heading" class="small mb-sm">Upload files (max 5)</h2>
 
+      <!-- Dropzone for drag & drop -->
       <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload or drag and drop files">
         <p><strong>Drag & drop files here</strong> or <button id="btnBrowse" class="btn-ghost" type="button">Browse</button></p>
         <p class="muted">Allowed: PDFs, DOC(X) Files Only — up to 5 files</p>
-        <input id="fileInput" type="file" accept=".pdf,.doc,.docx,image/*" multiple hidden />
+        <input id="fileInput" type="file" accept=".pdf,.doc,.docx" multiple hidden />
       </div>
 
+      <!-- File list container -->
       <div class="files-list" id="filesList" aria-live="polite"></div>
 
+      <!-- Encryption form -->
       <form id="encryptForm" class="mt-md" novalidate>
         <div class="grid-2 mt-lg">
+          <!-- Left column: file details -->
           <div>
             <div class="field">
               <label for="totalPages">Total pages (per upload)</label>
-              <input id="totalPages" name="totalPages" type="number" min="1" max="1000" value="1" required />
+              <input id="totalPages" name="totalPages" type="number" min="1" max="10000" value="1" required />
               <div class="muted small">Enter total pages for the selected files (each)</div>
             </div>
 
@@ -44,10 +48,11 @@
 
             <div class="field">
               <label for="notes">Additional information</label>
-              <textarea id="notes" name="notes" rows="4" placeholder="Any special instructions..."></textarea>
+              <textarea id="notes" name="notes" rows="4" placeholder="Any special instructions..." maxlength="500"></textarea>
             </div>
           </div>
 
+          <!-- Right column: binding options -->
           <aside>
             <div class="field">
               <label>Binding type</label>
@@ -64,14 +69,19 @@
           </aside>
         </div>
 
+        <!-- Form buttons -->
         <div class="controls">
           <button id="btnEncrypt" class="btn-primary" type="submit">Encrypt and Place Order</button>
-          <button id="btnCancel" class="btn-ghost" type="button">Cancel</button>
+          <a href="./index.html" class="btn-cancel" style="text-decoration:none;display:inline-block">Cancel</a>
         </div>
       </form>
     </section>
 
+    <!-- Status message area -->
     <div id="status" class="muted small" aria-live="polite"></div>
   </main>
+
+  <!-- Load encryption script (CORRECTED PATH) -->
+  <script src="./assets/js/encryption.js" defer></script>
 </body>
 </html>
