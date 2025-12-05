@@ -6,7 +6,7 @@
  * NO Node.js code here — browser-only APIs
  */
 
-(function() {
+(function () {
   const MAX_FILES = 5;
   const MAX_FILE_SIZE = 10 * 1024 * 1024;
   const ALLOWED_TYPES = new Set([
@@ -82,7 +82,7 @@
       e.preventDefault();
       e.stopPropagation();
       dropzone.classList.remove('hover');
-      
+
       if (e.dataTransfer && e.dataTransfer.files) {
         console.log('Files dropped:', e.dataTransfer.files.length);
         addFiles(e.dataTransfer.files);
@@ -163,7 +163,7 @@
 
   function renderFiles() {
     filesList.innerHTML = '';
-    
+
     if (selectedFiles.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'muted small';
@@ -253,9 +253,10 @@
         // Get notes
         const notes = document.getElementById('notes').value.trim().slice(0, 500);
 
-        // Update button
+        // Update button with loading spinner
         btnEncrypt.disabled = true;
-        btnEncrypt.textContent = 'Uploading & Encrypting...';
+        btnEncrypt.innerHTML = '<span class="spinner"></span> Uploading & Encrypting...';
+        btnEncrypt.classList.add('loading');
 
         // Build FormData
         const formData = new FormData();
@@ -323,7 +324,8 @@
         console.error('[Encryption] Error:', err);
         status.textContent = `✗ Error: ${err.message}`;
         status.style.color = '#ff6b6b';
-        btnEncrypt.textContent = 'Encrypt and Place Order';
+        btnEncrypt.innerHTML = 'Encrypt and Place Order';
+        btnEncrypt.classList.remove('loading');
         btnEncrypt.disabled = false;
         isProcessing = false;
       }

@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 const multer = require('multer');
 const crypto = require('crypto');
+const cors = require('cors');
 
 // ==========================================
 // Configuration & Security Constants
@@ -17,6 +18,8 @@ const crypto = require('crypto');
 
 const APP_PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
+const NODE_ENV = process.env.NODE_ENV || 'development';
+//const BASE_UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'var', 'uploads'));
 const BASE_UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '..', 'var', 'uploads'));
 const MAX_FILES = 5;
 const MAX_FILE_BYTES = parseInt(process.env.MAX_FILE_BYTES || String(10 * 1024 * 1024), 10);
@@ -25,6 +28,10 @@ const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 const KEY_LENGTH = 32;
+
+// NGINX configuration
+const NGINX_PORT = 8080;
+const NGINX_URL = process.env.NGINX_URL || `http://localhost:${NGINX_PORT}`;
 
 // ==========================================
 // Master Key Management
@@ -189,64 +196,102 @@ function formatBytes(bytes) {
   return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 }
 
+function getClientIp(req) {
+  if (!req || !req.headers) return 'UNKNOWN_IP';
+  return req.headers['x-real-ip'] || 
+         (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) || 
+         req.ip || 
+         'UNKNOWN_IP';
+}
+
 // ==========================================
 // Express App Setup
 // ==========================================
 
 const app = express();
 
-app.disable('x-powered-by');
+// Trust proxy headers from Nginx
+app.set('trust proxy', true);
+
+// CORS configuration
+app.use(cors({
+  origin: NGINX_URL,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID']
+}));
+
+// Security headers
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:'],
       connectSrc: ["'self'"],
       frameSrc: ["'none'"]
     }
   },
-  noSniff: true,
-  xssFilter: true,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: false,
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-  hsts: { maxAge: 31536000, includeSubDomains: true }
+  noSniff: true,
+  xssFilter: true
 }));
 
-app.use(morgan(':remote-addr :method :url :status :res[content-length] - :response-time ms', {
+// Custom morgan format
+morgan.token('real-ip', (req) => getClientIp(req));
+morgan.token('request-id', (req) => req.id || 'NO_ID');
+
+app.use(morgan(':real-ip :method :url :status :res[content-length] - :response-time ms [:request-id]', {
   skip: (req) => req.path === '/health'
 }));
 
+// Request ID middleware
 app.use((req, res, next) => {
   req.id = generateRequestId();
   res.setHeader('X-Request-ID', req.id);
   next();
 });
 
-app.use(express.json({ limit: '100kb' }));
-app.use(express.urlencoded({ extended: true, limit: '100kb' }));
+// Body parsing
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Serve frontend static files (no custom keyGenerator — removed IPv6 error)
-app.use(express.static(path.resolve(__dirname, '../frontend')));
-
-// Global API rate limiter (FIXED: removed custom keyGenerator)
+// Rate limiting
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 120,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later.' }
+  skip: (req) => req.path === '/health',
+  message: { 
+    error: 'Too many requests, please try again later.',
+    retryAfter: '60 seconds'
+  }
 });
 app.use('/api/', apiLimiter);
 
-// Upload-specific rate limiter (FIXED: removed custom keyGenerator)
+// Upload-specific rate limiter
 const uploadLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
+  windowMs: 15 * 60 * 1000,
+  max: 20,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  message: {
+    error: 'Too many upload requests. Please try again later.',
+    retryAfter: '15 minutes'
+  }
 });
 
+// Multer configuration
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
@@ -259,15 +304,24 @@ const upload = multer({
     const allowed = [
       'application/pdf',
       'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'text/plain',
+      'application/rtf'
     ];
 
     if (!allowed.includes(file.mimetype)) {
-      return cb(new Error('Unsupported file type'));
+      return cb(new Error(`Unsupported file type: ${file.mimetype}`));
     }
 
     if (!file.originalname || file.originalname.length > 260) {
-      return cb(new Error('Invalid filename'));
+      return cb(new Error('Invalid filename length'));
     }
 
     if (file.originalname.includes('\0')) {
@@ -285,22 +339,49 @@ const upload = multer({
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
+    service: 'PrintEase Encryption API',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: NODE_ENV,
+    nodeVersion: process.version,
+    uptime: process.uptime()
+  });
+});
+
+app.get('/api', (req, res) => {
+  res.json({
+    service: 'PrintEase Secure Encryption API',
+    version: '1.0.0',
+    endpoints: {
+      upload: 'POST /api/upload',
+      listJobs: 'GET /api/jobs',
+      getJob: 'GET /api/jobs/:id',
+      deleteJob: 'DELETE /api/jobs/:id',
+      health: 'GET /health'
+    },
+    encryption: {
+      algorithm: ENCRYPTION_ALGORITHM,
+      keyLength: KEY_LENGTH * 8,
+      maxFileSize: formatBytes(MAX_FILE_BYTES),
+      maxFiles: MAX_FILES
+    }
   });
 });
 
 app.post('/api/upload', uploadLimiter, upload.array('files', MAX_FILES), async (req, res, next) => {
   const requestId = req.id;
   const startTime = Date.now();
+  const clientIp = getClientIp(req);
 
   try {
     if (!req.files || req.files.length === 0) {
-      console.warn(`[${requestId}] Upload rejected: no files provided`);
-      return res.status(400).json({ error: 'No files provided' });
+      console.warn(`[${requestId}] Upload rejected: no files provided from ${clientIp}`);
+      return res.status(400).json({ 
+        error: 'No files provided',
+        code: 'NO_FILES'
+      });
     }
 
-    console.log(`[${requestId}] Processing ${req.files.length} file(s)`);
+    console.log(`[${requestId}] Processing ${req.files.length} file(s) from ${clientIp}`);
 
     const jobId = generateJobId();
     const jobDir = path.join(BASE_UPLOAD_DIR, jobId);
@@ -310,6 +391,10 @@ app.post('/api/upload', uploadLimiter, upload.array('files', MAX_FILES), async (
     const meta = {
       jobId,
       createdAt: new Date().toISOString(),
+      clientInfo: {
+        ip: clientIp,
+        userAgent: req.headers['user-agent'] || 'Unknown'
+      },
       encryption: {
         algorithm: ENCRYPTION_ALGORITHM,
         keyLength: KEY_LENGTH * 8,
@@ -320,7 +405,7 @@ app.post('/api/upload', uploadLimiter, upload.array('files', MAX_FILES), async (
     };
 
     for (const file of req.files) {
-      console.log(`[${requestId}] Encrypting: ${file.originalname} (${file.size} bytes)`);
+      console.log(`[${requestId}] Encrypting: ${file.originalname} (${formatBytes(file.size)})`);
 
       const fileKey = crypto.randomBytes(KEY_LENGTH);
       const { encrypted, iv, tag, hash } = encryptBufferAESGCM(file.buffer, fileKey);
@@ -344,7 +429,8 @@ app.post('/api/upload', uploadLimiter, upload.array('files', MAX_FILES), async (
         hash: hash.toString('base64'),
         wrappedKey: wrapped.toString('base64'),
         wrapIv: wrapIv.toString('base64'),
-        wrapTag: wrapTag.toString('base64')
+        wrapTag: wrapTag.toString('base64'),
+        uploadedAt: new Date().toISOString()
       });
     }
 
@@ -354,6 +440,7 @@ app.post('/api/upload', uploadLimiter, upload.array('files', MAX_FILES), async (
     const safeMeta = {
       jobId: meta.jobId,
       createdAt: meta.createdAt,
+      fileCount: meta.files.length,
       encryption: meta.encryption,
       files: meta.files.map(f => ({
         originalName: f.originalName,
@@ -361,16 +448,21 @@ app.post('/api/upload', uploadLimiter, upload.array('files', MAX_FILES), async (
         mimetype: f.mimetype,
         originalSize: f.originalSize,
         encryptedSize: f.encryptedSize
-      }))
+      })),
+      downloadUrl: `${NGINX_URL}/api/download/${jobId}`
     };
 
     const duration = Date.now() - startTime;
     console.log(`[${requestId}] ✓ Job ${jobId} created in ${duration}ms`);
 
-    return res.status(201).json({ success: true, job: safeMeta });
+    return res.status(201).json({ 
+      success: true, 
+      job: safeMeta,
+      processingTime: `${duration}ms`
+    });
 
   } catch (err) {
-    console.error(`[${requestId}] Error:`, err);
+    console.error(`[${requestId}] Upload error from ${clientIp}:`, err);
     next(err);
   }
 });
@@ -493,73 +585,135 @@ app.delete('/api/jobs/:id', async (req, res, next) => {
   }
 });
 
-// SPA fallback (optional)
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api/')) return next();
-  res.sendFile(path.resolve(__dirname, '../frontend/encryptionDashboard.html'));
+app.get('/api/download/:id', async (req, res, next) => {
+  const jobId = req.params.id;
+  const requestId = req.id;
+  
+  if (!isValidJobId(jobId)) {
+    return res.status(400).json({ error: 'Invalid job ID' });
+  }
+
+  try {
+    const metaPath = path.join(BASE_UPLOAD_DIR, jobId, 'meta.json');
+    const raw = await fs.readFile(metaPath, 'utf8');
+    const meta = JSON.parse(raw);
+    
+    res.json({
+      jobId,
+      files: meta.files.map(f => ({
+        originalName: f.originalName,
+        downloadUrl: `${NGINX_URL}/api/download/${jobId}/${f.encFilename}`
+      }))
+    });
+    
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    next(err);
+  }
 });
 
 // ==========================================
-// Error Handlers
+// Error Handlers (SAFE VERSION)
 // ==========================================
 
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     let statusCode = 400;
     let message = 'Upload error';
+    let code = 'UPLOAD_ERROR';
 
     if (err.code === 'LIMIT_FILE_SIZE') {
       message = `File too large (max ${formatBytes(MAX_FILE_BYTES)})`;
+      code = 'FILE_TOO_LARGE';
     } else if (err.code === 'LIMIT_FILE_COUNT') {
       message = `Too many files (max ${MAX_FILES})`;
+      code = 'TOO_MANY_FILES';
     }
 
-    console.error(`[${req.id}] Multer error: ${err.code}`);
-    return res.status(statusCode).json({ error: message });
+    console.error(`[${req?.id || 'NO_ID'}] Multer error: ${err.code}`);
+    return res.status(statusCode).json({ 
+      error: message,
+      code,
+      maxFileSize: MAX_FILE_BYTES,
+      maxFiles: MAX_FILES
+    });
   }
 
   if (err && err.message) {
-    return res.status(400).json({ error: err.message });
+    return res.status(400).json({ 
+      error: err.message,
+      code: 'VALIDATION_ERROR'
+    });
   }
 
   next(err);
 });
 
-app.use((err, req, res) => {
-  console.error(`[${req.id}] Unhandled error:`, err && err.stack ? err.stack : err);
+// Safe error handler
+app.use((err, req, res, next) => {
+  const requestId = req?.id || 'NO_REQUEST_ID';
+  const clientIp = getClientIp(req);
+  
+  console.error(`[${requestId}] Unhandled error from ${clientIp}:`, 
+                err?.stack || err?.message || err || 'Unknown error');
 
-  const statusCode = err.statusCode || 500;
-  const isDev = process.env.NODE_ENV === 'development';
+  const statusCode = err?.statusCode || 500;
+  const isDev = NODE_ENV === 'development';
 
-  res.status(statusCode).json({
+  const response = {
     error: 'Internal server error',
-    ...(isDev && { details: err.message })
+    requestId,
+    timestamp: new Date().toISOString()
+  };
+
+  if (isDev && err) {
+    response.details = err.message;
+    if (err.stack) response.stack = err.stack;
+  }
+
+  res.status(statusCode).json(response);
+});
+
+// ==========================================
+// 404 Handler (must be last before error handlers)
+// ==========================================
+
+app.use('*', (req, res) => {
+  res.status(404).json({
+    error: 'Route not found',
+    path: req.originalUrl,
+    method: req.method,
+    timestamp: new Date().toISOString()
   });
 });
 
 // ==========================================
-// Server Startup & Shutdown
+// Server Startup
 // ==========================================
 
 const server = app.listen(APP_PORT, HOST, () => {
-  console.log('\n╔═════════════════════════════════════════╗');
-  console.log('║   PrintEase Encryption Server Ready    ║');
-  console.log('╚═════════════════════════════════════════╝\n');
-  console.log(`  Host: ${HOST}`);
-  console.log(`  Port: ${APP_PORT}`);
-  console.log(`  URL: http://${HOST}:${APP_PORT}`);
-  console.log(`  Upload Dir: ${BASE_UPLOAD_DIR}`);
-  console.log(`  Encryption: ${ENCRYPTION_ALGORITHM.toUpperCase()}`);
-  console.log(`  Max File Size: ${formatBytes(MAX_FILE_BYTES)}`);
-  console.log(`  Max Files: ${MAX_FILES}`);
-  console.log('\n  Ready for secure uploads...\n');
+  console.log('\n╔══════════════════════════════════════════════════════════════╗');
+  console.log('║           PrintEase Encryption API (NGINX Mode)           ║');
+  console.log('╚══════════════════════════════════════════════════════════════╝\n');
+  console.log(`  🔒 API Server: http://${HOST}:${APP_PORT}`);
+  console.log(`  🌐 Nginx Proxy: ${NGINX_URL}`);
+  console.log(`  📁 Upload Dir: ${BASE_UPLOAD_DIR}`);
+  console.log(`  🔐 Encryption: ${ENCRYPTION_ALGORITHM.toUpperCase()}`);
+  console.log(`  📄 Max File Size: ${formatBytes(MAX_FILE_BYTES)}`);
+  console.log(`  📦 Max Files: ${MAX_FILES}`);
+  console.log(`  ⚡ Environment: ${NODE_ENV}`);
+  console.log(`  🔄 Trust Proxy: ${app.get('trust proxy')}`);
+  console.log('\n  ✅ Server started successfully\n');
 });
 
+// Graceful shutdown
 function gracefulShutdown(signal) {
   console.log(`\n\n✓ Received ${signal}. Shutting down gracefully...`);
   
   server.close(() => {
-    console.log('✓ Server closed');
+    console.log('✓ Node.js server closed');
     process.exit(0);
   });
 

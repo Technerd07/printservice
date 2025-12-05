@@ -1,0 +1,31 @@
+{
+  "jobId": "1542c4b5e61732dfa98980849365f0f4",
+  "createdAt": "2025-12-05T06:45:21.033Z",
+  "clientInfo": {
+    "ip": "127.0.0.1",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
+  },
+  "encryption": {
+    "algorithm": "aes-256-gcm",
+    "keyLength": 256,
+    "ivLength": 96,
+    "tagLength": 128
+  },
+  "files": [
+    {
+      "originalName": "DAMODAR 367 Review 3 Final report_compressed.pdf",
+      "safeName": "DAMODAR_367_Review_3_Final_report_compressed.pdf",
+      "encFilename": "DAMODAR_367_Review_3_Final_report_compressed.pdf.enc",
+      "mimetype": "application/pdf",
+      "originalSize": 982624,
+      "encryptedSize": 982624,
+      "iv": "XEFV3QgSD2TVbC06",
+      "authTag": "zLm/1+L8Z35hpbQ9rwrLXg==",
+      "hash": "nwnmu99DejVqc9VLFtg/1MvTxti/9sEbWrySc4GMNBg=",
+      "wrappedKey": "v9PDf1DLOZZ7VqXGPhBMSIirziZy5Lf6UBt8XMjvt3I=",
+      "wrapIv": "jUkk2DCBpy1/aRCl",
+      "wrapTag": "yUWaHCQKkuY9UtsRuak9iQ==",
+      "uploadedAt": "2025-12-05T06:45:21.042Z"
+    }
+  ]
+}

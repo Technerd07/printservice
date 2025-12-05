@@ -1,0 +1,37 @@
+# /etc/nginx/sites-available/printservice
+server {
+    listen 8080;
+    server_name localhost;
+    
+    # IMPORTANT: Root is /var/www/html/printservice/frontend
+    root /var/www/html/printservice/frontend;
+    index index.html;
+    
+    # Enable directory listing for debugging
+    autoindex on;
+    
+    # HTML files
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+    
+    # CSS files
+    location ~ \.css$ {
+        add_header Content-Type "text/css";
+    }
+    
+    # JS files
+    location ~ \.js$ {
+        add_header Content-Type "application/javascript";
+    }
+    
+    # API proxy
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+
+# Optional: Remove default site
+# sudo rm /etc/nginx/sites-enabled/default
