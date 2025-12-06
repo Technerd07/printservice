@@ -1,0 +1,6 @@
+{"timestamp":"2025-12-06T14:52:56.572Z","level":"INFO","category":"ENCRYPTION","message":"ENCRYPTING_FILE","requestId":"69865cb2291633af02f8b77539a0c4c0","jobId":"089d5935ba1c7575742eb6ff47ef412e","filename":"DAMODAR 367 Review 3 Final report_compressed-1.pdf","size":982624,"pid":12779,"hostname":"Kali"}
+{"timestamp":"2025-12-06T14:52:56.576Z","level":"INFO","category":"ENCRYPTION","message":"FILE_ENCRYPTED","originalSize":982624,"encryptedSize":982624,"duration":3,"pid":12779,"hostname":"Kali"}
+{"timestamp":"2025-12-06T14:52:56.576Z","level":"INFO","category":"ENCRYPTION","message":"KEY_WRAPPED","keyLength":32,"pid":12779,"hostname":"Kali"}
+{"timestamp":"2025-12-06T14:54:25.878Z","level":"INFO","category":"ENCRYPTION","message":"ENCRYPTING_FILE","requestId":"d8bee8729b9d20589f754761756fb513","jobId":"f6f9a649d0ab9ea77e708db1d64d77ca","filename":"DAMODAR 367 Review 3 Final report_compressed.pdf","size":982624,"pid":12779,"hostname":"Kali"}
+{"timestamp":"2025-12-06T14:54:25.884Z","level":"INFO","category":"ENCRYPTION","message":"FILE_ENCRYPTED","originalSize":982624,"encryptedSize":982624,"duration":6,"pid":12779,"hostname":"Kali"}
+{"timestamp":"2025-12-06T14:54:25.885Z","level":"INFO","category":"ENCRYPTION","message":"KEY_WRAPPED","keyLength":32,"pid":12779,"hostname":"Kali"}

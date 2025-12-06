@@ -3,7 +3,7 @@
 require('dotenv').config();
 const path = require('path');
 const fs = require('fs').promises;
-const { mkdirSync, existsSync } = require('fs');
+const { mkdirSync, existsSync, createWriteStream } = require('fs');
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -11,6 +11,8 @@ const morgan = require('morgan');
 const multer = require('multer');
 const crypto = require('crypto');
 const cors = require('cors');
+const { Worker } = require('worker_threads');
+const os = require('os');
 
 // ==========================================
 // Configuration & Security Constants
@@ -19,8 +21,8 @@ const cors = require('cors');
 const APP_PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
 const NODE_ENV = process.env.NODE_ENV || 'development';
-//const BASE_UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'var', 'uploads'));
 const BASE_UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '..', 'var', 'uploads'));
+const LOG_DIR = path.resolve(process.env.LOG_DIR || path.join(__dirname, '..', 'var', 'logs'));
 const MAX_FILES = 5;
 const MAX_FILE_BYTES = parseInt(process.env.MAX_FILE_BYTES || String(10 * 1024 * 1024), 10);
 const REQUEST_ID_LENGTH = 16;
@@ -29,9 +31,212 @@ const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 const KEY_LENGTH = 32;
 
+// Worker thread configuration
+const MAX_WORKERS = parseInt(process.env.MAX_WORKERS || String(os.cpus().length), 10);
+
 // NGINX configuration
 const NGINX_PORT = 8080;
 const NGINX_URL = process.env.NGINX_URL || `http://localhost:${NGINX_PORT}`;
+
+// ==========================================
+// Logging System
+// ==========================================
+
+class Logger {
+  constructor(logDir) {
+    this.logDir = logDir;
+    this.streams = {};
+    this.initLogDirectory();
+  }
+
+  initLogDirectory() {
+    if (!existsSync(this.logDir)) {
+      mkdirSync(this.logDir, { recursive: true, mode: 0o755 });
+      console.log(`✓ Created log directory: ${this.logDir}`);
+    }
+
+    // Create log files
+    const logTypes = ['access', 'error', 'audit', 'encryption', 'performance'];
+    logTypes.forEach(type => {
+      const logPath = path.join(this.logDir, `${type}.log`);
+      this.streams[type] = createWriteStream(logPath, { flags: 'a' });
+    });
+  }
+
+  formatLogEntry(level, category, message, metadata = {}) {
+    return JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level,
+      category,
+      message,
+      ...metadata,
+      pid: process.pid,
+      hostname: os.hostname()
+    }) + '\n';
+  }
+
+  write(type, level, category, message, metadata) {
+    const entry = this.formatLogEntry(level, category, message, metadata);
+    
+    if (this.streams[type]) {
+      this.streams[type].write(entry);
+    }
+    
+    // Also log to console in development
+    if (NODE_ENV === 'development') {
+      console.log(`[${level}] ${category}: ${message}`);
+    }
+  }
+
+  access(message, metadata) {
+    this.write('access', 'INFO', 'ACCESS', message, metadata);
+  }
+
+  error(message, metadata) {
+    this.write('error', 'ERROR', 'ERROR', message, metadata);
+    console.error(`[ERROR] ${message}`, metadata);
+  }
+
+  audit(action, metadata) {
+    this.write('audit', 'AUDIT', action, 'Audit trail', metadata);
+  }
+
+  encryption(message, metadata) {
+    this.write('encryption', 'INFO', 'ENCRYPTION', message, metadata);
+  }
+
+  performance(operation, duration, metadata) {
+    this.write('performance', 'PERF', operation, `Completed in ${duration}ms`, {
+      duration,
+      ...metadata
+    });
+  }
+
+  close() {
+    Object.values(this.streams).forEach(stream => stream.end());
+  }
+}
+
+const logger = new Logger(LOG_DIR);
+
+// ==========================================
+// Worker Thread Pool Management
+// ==========================================
+
+class WorkerPool {
+  constructor(maxWorkers, workerScript) {
+    this.maxWorkers = maxWorkers;
+    this.workerScript = workerScript;
+    this.workers = [];
+    this.queue = [];
+    this.activeJobs = new Map();
+    
+    logger.audit('WORKER_POOL_INIT', {
+      maxWorkers,
+      cpuCount: os.cpus().length
+    });
+  }
+
+  async initialize() {
+    for (let i = 0; i < this.maxWorkers; i++) {
+      this.workers.push({
+        id: i,
+        busy: false,
+        worker: null
+      });
+    }
+    logger.audit('WORKER_POOL_READY', { workers: this.maxWorkers });
+  }
+
+  async executeJob(jobData) {
+    return new Promise((resolve, reject) => {
+      const job = { jobData, resolve, reject, timestamp: Date.now() };
+      
+      const worker = this.getAvailableWorker();
+      if (worker) {
+        this.runJob(worker, job);
+      } else {
+        this.queue.push(job);
+        logger.performance('QUEUE_JOB', 0, {
+          queueSize: this.queue.length,
+          jobId: jobData.jobId
+        });
+      }
+    });
+  }
+
+  getAvailableWorker() {
+    return this.workers.find(w => !w.busy);
+  }
+
+  runJob(workerSlot, job) {
+    workerSlot.busy = true;
+    const startTime = Date.now();
+
+    const worker = new Worker(this.workerScript, {
+      workerData: job.jobData
+    });
+
+    workerSlot.worker = worker;
+    this.activeJobs.set(worker.threadId, job);
+
+    worker.on('message', (result) => {
+      const duration = Date.now() - startTime;
+      logger.performance('WORKER_JOB_COMPLETE', duration, {
+        jobId: job.jobData.jobId,
+        threadId: worker.threadId
+      });
+      
+      job.resolve(result);
+      this.cleanupWorker(workerSlot, worker);
+    });
+
+    worker.on('error', (error) => {
+      logger.error('WORKER_ERROR', {
+        jobId: job.jobData.jobId,
+        error: error.message,
+        stack: error.stack
+      });
+      
+      job.reject(error);
+      this.cleanupWorker(workerSlot, worker);
+    });
+
+    worker.on('exit', (code) => {
+      if (code !== 0) {
+        logger.error('WORKER_EXIT_ERROR', {
+          code,
+          jobId: job.jobData.jobId
+        });
+      }
+    });
+  }
+
+  cleanupWorker(workerSlot, worker) {
+    workerSlot.busy = false;
+    workerSlot.worker = null;
+    this.activeJobs.delete(worker.threadId);
+
+    // Process next job in queue
+    if (this.queue.length > 0) {
+      const nextJob = this.queue.shift();
+      this.runJob(workerSlot, nextJob);
+    }
+  }
+
+  getStats() {
+    return {
+      maxWorkers: this.maxWorkers,
+      busyWorkers: this.workers.filter(w => w.busy).length,
+      queueSize: this.queue.length,
+      activeJobs: this.activeJobs.size
+    };
+  }
+}
+
+// Note: Worker pool structure ready but not used yet
+// To enable: create encryption-worker.js and uncomment below
+// const workerPool = new WorkerPool(MAX_WORKERS, path.join(__dirname, 'encryption-worker.js'));
 
 // ==========================================
 // Master Key Management
@@ -48,19 +253,23 @@ if (process.env.MASTER_KEY) {
       MASTER_KEY = Buffer.from(process.env.MASTER_KEY, 'hex');
       if (MASTER_KEY.length !== KEY_LENGTH) throw new Error('bad length');
     } catch {
+      logger.error('INVALID_MASTER_KEY', { source: 'environment' });
       console.error('❌ MASTER_KEY provided but invalid. Exiting.');
       process.exit(1);
     }
   }
+  logger.audit('MASTER_KEY_LOADED', { source: 'environment' });
   console.log('✓ MASTER_KEY loaded from environment');
 } else {
   console.warn('⚠️  No MASTER_KEY provided. Running in development mode with ephemeral key.');
   console.warn('⚠️  This key will be lost on restart. Do NOT use in production.');
   MASTER_KEY = crypto.randomBytes(KEY_LENGTH);
+  logger.audit('EPHEMERAL_KEY_GENERATED', { warning: 'development_only' });
 }
 
 if (!existsSync(BASE_UPLOAD_DIR)) {
   mkdirSync(BASE_UPLOAD_DIR, { recursive: true, mode: 0o700 });
+  logger.audit('UPLOAD_DIR_CREATED', { path: BASE_UPLOAD_DIR });
   console.log(`✓ Created secure upload directory: ${BASE_UPLOAD_DIR}`);
 }
 
@@ -87,6 +296,8 @@ function computeHash(buffer) {
 }
 
 function encryptBufferAESGCM(buffer, key) {
+  const startTime = Date.now();
+  
   if (!key || key.length !== KEY_LENGTH) {
     throw new Error('Invalid encryption key length');
   }
@@ -97,6 +308,13 @@ function encryptBufferAESGCM(buffer, key) {
   const encrypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
   const tag = cipher.getAuthTag();
   const hash = computeHash(buffer);
+
+  const duration = Date.now() - startTime;
+  logger.encryption('FILE_ENCRYPTED', {
+    originalSize: buffer.length,
+    encryptedSize: encrypted.length,
+    duration
+  });
 
   return { encrypted, iv, tag, hash };
 }
@@ -123,6 +341,7 @@ function wrapKey(fileKey) {
   const wrapped = Buffer.concat([cipher.update(fileKey), cipher.final()]);
   const tag = cipher.getAuthTag();
 
+  logger.encryption('KEY_WRAPPED', { keyLength: fileKey.length });
   return { wrapped, iv, tag };
 }
 
@@ -139,6 +358,7 @@ function unwrapKey(wrapped, iv, tag) {
     throw new Error('Unwrapped key has invalid length');
   }
 
+  logger.encryption('KEY_UNWRAPPED', { keyLength: key.length });
   return key;
 }
 
@@ -160,6 +380,8 @@ async function safeWriteFile(filePath, data, mode = 0o600) {
 }
 
 async function secureDelete(filePath, passes = 3) {
+  const startTime = Date.now();
+  
   try {
     const stat = await fs.stat(filePath);
     const size = stat.size;
@@ -170,8 +392,20 @@ async function secureDelete(filePath, passes = 3) {
 
     await fs.writeFile(filePath, Buffer.alloc(size, 0));
     await fs.unlink(filePath);
+    
+    const duration = Date.now() - startTime;
+    logger.audit('SECURE_DELETE', {
+      filePath: path.basename(filePath),
+      size,
+      passes,
+      duration
+    });
   } catch (err) {
-    console.error(`Error securely deleting ${filePath}:`, err);
+    logger.error('SECURE_DELETE_FAILED', {
+      filePath: path.basename(filePath),
+      error: err.message
+    });
+    
     try {
       await fs.unlink(filePath);
     } catch {
@@ -246,18 +480,47 @@ app.use(helmet({
   xssFilter: true
 }));
 
-// Custom morgan format
+// Custom morgan format with file logging
 morgan.token('real-ip', (req) => getClientIp(req));
 morgan.token('request-id', (req) => req.id || 'NO_ID');
+
+const accessLogStream = createWriteStream(path.join(LOG_DIR, 'http-access.log'), { flags: 'a' });
+
+app.use(morgan(':real-ip :method :url :status :res[content-length] - :response-time ms [:request-id]', {
+  skip: (req) => req.path === '/health',
+  stream: accessLogStream
+}));
 
 app.use(morgan(':real-ip :method :url :status :res[content-length] - :response-time ms [:request-id]', {
   skip: (req) => req.path === '/health'
 }));
 
-// Request ID middleware
+// Request ID middleware with logging
 app.use((req, res, next) => {
   req.id = generateRequestId();
+  req.startTime = Date.now();
   res.setHeader('X-Request-ID', req.id);
+  
+  logger.access('REQUEST_RECEIVED', {
+    requestId: req.id,
+    method: req.method,
+    path: req.path,
+    ip: getClientIp(req),
+    userAgent: req.headers['user-agent']
+  });
+  
+  // Log response
+  res.on('finish', () => {
+    const duration = Date.now() - req.startTime;
+    logger.access('REQUEST_COMPLETED', {
+      requestId: req.id,
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      duration
+    });
+  });
+  
   next();
 });
 
@@ -272,9 +535,16 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path === '/health',
-  message: { 
-    error: 'Too many requests, please try again later.',
-    retryAfter: '60 seconds'
+  handler: (req, res) => {
+    logger.audit('RATE_LIMIT_EXCEEDED', {
+      ip: getClientIp(req),
+      path: req.path,
+      requestId: req.id
+    });
+    res.status(429).json({
+      error: 'Too many requests, please try again later.',
+      retryAfter: '60 seconds'
+    });
   }
 });
 app.use('/api/', apiLimiter);
@@ -285,9 +555,15 @@ const uploadLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: {
-    error: 'Too many upload requests. Please try again later.',
-    retryAfter: '15 minutes'
+  handler: (req, res) => {
+    logger.audit('UPLOAD_RATE_LIMIT_EXCEEDED', {
+      ip: getClientIp(req),
+      requestId: req.id
+    });
+    res.status(429).json({
+      error: 'Too many upload requests. Please try again later.',
+      retryAfter: '15 minutes'
+    });
   }
 });
 
@@ -317,6 +593,11 @@ const upload = multer({
     ];
 
     if (!allowed.includes(file.mimetype)) {
+      logger.audit('FILE_TYPE_REJECTED', {
+        filename: file.originalname,
+        mimetype: file.mimetype,
+        ip: getClientIp(req)
+      });
       return cb(new Error(`Unsupported file type: ${file.mimetype}`));
     }
 
@@ -325,6 +606,10 @@ const upload = multer({
     }
 
     if (file.originalname.includes('\0')) {
+      logger.audit('NULL_BYTE_ATTACK_DETECTED', {
+        filename: file.originalname,
+        ip: getClientIp(req)
+      });
       return cb(new Error('Filename contains null bytes'));
     }
 
@@ -337,13 +622,21 @@ const upload = multer({
 // ==========================================
 
 app.get('/health', (req, res) => {
+  const uptime = process.uptime();
+  const memUsage = process.memoryUsage();
+  
   res.json({
     status: 'ok',
     service: 'PrintEase Encryption API',
     timestamp: new Date().toISOString(),
     environment: NODE_ENV,
     nodeVersion: process.version,
-    uptime: process.uptime()
+    uptime: Math.floor(uptime),
+    memory: {
+      rss: formatBytes(memUsage.rss),
+      heapUsed: formatBytes(memUsage.heapUsed),
+      heapTotal: formatBytes(memUsage.heapTotal)
+    }
   });
 });
 
@@ -356,6 +649,7 @@ app.get('/api', (req, res) => {
       listJobs: 'GET /api/jobs',
       getJob: 'GET /api/jobs/:id',
       deleteJob: 'DELETE /api/jobs/:id',
+      stats: 'GET /api/stats',
       health: 'GET /health'
     },
     encryption: {
@@ -367,6 +661,43 @@ app.get('/api', (req, res) => {
   });
 });
 
+// Stats endpoint
+app.get('/api/stats', async (req, res) => {
+  try {
+    const uptime = process.uptime();
+    const memUsage = process.memoryUsage();
+    
+    // Count total jobs
+    const jobDirs = await fs.readdir(BASE_UPLOAD_DIR, { withFileTypes: true });
+    const totalJobs = jobDirs.filter(d => d.isDirectory()).length;
+    
+    res.json({
+      system: {
+        uptime: Math.floor(uptime),
+        memory: {
+          rss: formatBytes(memUsage.rss),
+          heapUsed: formatBytes(memUsage.heapUsed),
+          heapTotal: formatBytes(memUsage.heapTotal)
+        },
+        cpu: os.cpus().length,
+        platform: os.platform(),
+        nodeVersion: process.version
+      },
+      jobs: {
+        total: totalJobs
+      },
+      config: {
+        maxWorkers: MAX_WORKERS,
+        maxFileSize: formatBytes(MAX_FILE_BYTES),
+        maxFiles: MAX_FILES
+      }
+    });
+  } catch (err) {
+    logger.error('STATS_ERROR', { error: err.message });
+    res.status(500).json({ error: 'Failed to retrieve stats' });
+  }
+});
+
 app.post('/api/upload', uploadLimiter, upload.array('files', MAX_FILES), async (req, res, next) => {
   const requestId = req.id;
   const startTime = Date.now();
@@ -374,14 +705,19 @@ app.post('/api/upload', uploadLimiter, upload.array('files', MAX_FILES), async (
 
   try {
     if (!req.files || req.files.length === 0) {
-      console.warn(`[${requestId}] Upload rejected: no files provided from ${clientIp}`);
+      logger.audit('UPLOAD_NO_FILES', { requestId, ip: clientIp });
       return res.status(400).json({ 
         error: 'No files provided',
         code: 'NO_FILES'
       });
     }
 
-    console.log(`[${requestId}] Processing ${req.files.length} file(s) from ${clientIp}`);
+    logger.audit('UPLOAD_START', {
+      requestId,
+      ip: clientIp,
+      fileCount: req.files.length,
+      totalSize: req.files.reduce((sum, f) => sum + f.size, 0)
+    });
 
     const jobId = generateJobId();
     const jobDir = path.join(BASE_UPLOAD_DIR, jobId);
@@ -405,7 +741,14 @@ app.post('/api/upload', uploadLimiter, upload.array('files', MAX_FILES), async (
     };
 
     for (const file of req.files) {
-      console.log(`[${requestId}] Encrypting: ${file.originalname} (${formatBytes(file.size)})`);
+      const fileStartTime = Date.now();
+      
+      logger.encryption('ENCRYPTING_FILE', {
+        requestId,
+        jobId,
+        filename: file.originalname,
+        size: file.size
+      });
 
       const fileKey = crypto.randomBytes(KEY_LENGTH);
       const { encrypted, iv, tag, hash } = encryptBufferAESGCM(file.buffer, fileKey);
@@ -416,6 +759,16 @@ app.post('/api/upload', uploadLimiter, upload.array('files', MAX_FILES), async (
       const encPath = path.join(jobDir, encFilename);
 
       await safeWriteFile(encPath, encrypted, 0o600);
+
+      const fileDuration = Date.now() - fileStartTime;
+      
+      logger.performance('FILE_ENCRYPTED', fileDuration, {
+        requestId,
+        jobId,
+        filename: file.originalname,
+        originalSize: file.size,
+        encryptedSize: encrypted.length
+      });
 
       meta.files.push({
         originalName: file.originalname,
@@ -453,7 +806,20 @@ app.post('/api/upload', uploadLimiter, upload.array('files', MAX_FILES), async (
     };
 
     const duration = Date.now() - startTime;
-    console.log(`[${requestId}] ✓ Job ${jobId} created in ${duration}ms`);
+    
+    logger.audit('UPLOAD_SUCCESS', {
+      requestId,
+      jobId,
+      ip: clientIp,
+      fileCount: meta.files.length,
+      duration
+    });
+    
+    logger.performance('UPLOAD_COMPLETE', duration, {
+      requestId,
+      jobId,
+      fileCount: meta.files.length
+    });
 
     return res.status(201).json({ 
       success: true, 
@@ -462,7 +828,12 @@ app.post('/api/upload', uploadLimiter, upload.array('files', MAX_FILES), async (
     });
 
   } catch (err) {
-    console.error(`[${requestId}] Upload error from ${clientIp}:`, err);
+    logger.error('UPLOAD_FAILED', {
+      requestId,
+      ip: clientIp,
+      error: err.message,
+      stack: err.stack
+    });
     next(err);
   }
 });
@@ -492,11 +863,14 @@ app.get('/api/jobs', async (req, res, next) => {
       }
     }
 
-    console.log(`[${requestId}] Returned ${jobs.length} job(s)`);
+    logger.audit('JOBS_LISTED', { requestId, count: jobs.length });
     res.json({ jobs });
 
   } catch (err) {
-    console.error(`[${requestId}] Error listing jobs:`, err);
+    logger.error('LIST_JOBS_ERROR', {
+      requestId,
+      error: err.message
+    });
     next(err);
   }
 });
@@ -507,14 +881,18 @@ app.get('/api/jobs/:id', async (req, res, next) => {
 
   try {
     if (!isValidJobId(jobId)) {
-      console.warn(`[${requestId}] Invalid job ID format: ${jobId}`);
+      logger.audit('INVALID_JOB_ID', { requestId, jobId });
       return res.status(400).json({ error: 'Invalid job ID' });
     }
 
     const metaPath = path.join(BASE_UPLOAD_DIR, jobId, 'meta.json');
 
     if (!isPathSafe(BASE_UPLOAD_DIR, metaPath)) {
-      console.warn(`[${requestId}] Path traversal attempt detected`);
+      logger.audit('PATH_TRAVERSAL_ATTEMPT', {
+        requestId,
+        jobId,
+        ip: getClientIp(req)
+      });
       return res.status(400).json({ error: 'Invalid job path' });
     }
 
@@ -534,15 +912,19 @@ app.get('/api/jobs/:id', async (req, res, next) => {
       }))
     };
 
-    console.log(`[${requestId}] Retrieved job ${jobId}`);
+    logger.audit('JOB_RETRIEVED', { requestId, jobId });
     res.json({ job: safeMeta });
 
   } catch (err) {
     if (err.code === 'ENOENT') {
-      console.warn(`[${requestId}] Job not found: ${jobId}`);
+      logger.audit('JOB_NOT_FOUND', { requestId, jobId });
       return res.status(404).json({ error: 'Job not found' });
     }
-    console.error(`[${requestId}] Error retrieving job:`, err);
+    logger.error('GET_JOB_ERROR', {
+      requestId,
+      jobId,
+      error: err.message
+    });
     next(err);
   }
 });
@@ -550,17 +932,22 @@ app.get('/api/jobs/:id', async (req, res, next) => {
 app.delete('/api/jobs/:id', async (req, res, next) => {
   const requestId = req.id;
   const jobId = String(req.params.id);
+  const clientIp = getClientIp(req);
 
   try {
     if (!isValidJobId(jobId)) {
-      console.warn(`[${requestId}] Invalid job ID for deletion: ${jobId}`);
+      logger.audit('INVALID_JOB_ID_DELETE', { requestId, jobId, ip: clientIp });
       return res.status(400).json({ error: 'Invalid job ID' });
     }
 
     const jobDir = path.join(BASE_UPLOAD_DIR, jobId);
 
     if (!isPathSafe(BASE_UPLOAD_DIR, jobDir)) {
-      console.warn(`[${requestId}] Path traversal attempt in deletion`);
+      logger.audit('PATH_TRAVERSAL_DELETE_ATTEMPT', {
+        requestId,
+        jobId,
+        ip: clientIp
+      });
       return res.status(400).json({ error: 'Invalid job path' });
     }
 
@@ -572,15 +959,25 @@ app.delete('/api/jobs/:id', async (req, res, next) => {
 
     await fs.rmdir(jobDir);
 
-    console.log(`[${requestId}] ✓ Job ${jobId} securely deleted`);
+    logger.audit('JOB_DELETED', {
+      requestId,
+      jobId,
+      ip: clientIp,
+      fileCount: files.length
+    });
+
     res.json({ success: true, deleted: jobId });
 
   } catch (err) {
     if (err.code === 'ENOENT') {
-      console.warn(`[${requestId}] Job not found for deletion: ${jobId}`);
+      logger.audit('DELETE_JOB_NOT_FOUND', { requestId, jobId });
       return res.status(404).json({ error: 'Job not found' });
     }
-    console.error(`[${requestId}] Error deleting job:`, err);
+    logger.error('DELETE_JOB_ERROR', {
+      requestId,
+      jobId,
+      error: err.message
+    });
     next(err);
   }
 });
@@ -590,6 +987,7 @@ app.get('/api/download/:id', async (req, res, next) => {
   const requestId = req.id;
   
   if (!isValidJobId(jobId)) {
+    logger.audit('INVALID_DOWNLOAD_JOB_ID', { requestId, jobId });
     return res.status(400).json({ error: 'Invalid job ID' });
   }
 
@@ -597,6 +995,12 @@ app.get('/api/download/:id', async (req, res, next) => {
     const metaPath = path.join(BASE_UPLOAD_DIR, jobId, 'meta.json');
     const raw = await fs.readFile(metaPath, 'utf8');
     const meta = JSON.parse(raw);
+    
+    logger.audit('DOWNLOAD_INFO_REQUESTED', {
+      requestId,
+      jobId,
+      ip: getClientIp(req)
+    });
     
     res.json({
       jobId,
@@ -608,6 +1012,7 @@ app.get('/api/download/:id', async (req, res, next) => {
     
   } catch (err) {
     if (err.code === 'ENOENT') {
+      logger.audit('DOWNLOAD_JOB_NOT_FOUND', { requestId, jobId });
       return res.status(404).json({ error: 'Job not found' });
     }
     next(err);
@@ -615,7 +1020,7 @@ app.get('/api/download/:id', async (req, res, next) => {
 });
 
 // ==========================================
-// Error Handlers (SAFE VERSION)
+// Error Handlers
 // ==========================================
 
 app.use((err, req, res, next) => {
@@ -632,7 +1037,12 @@ app.use((err, req, res, next) => {
       code = 'TOO_MANY_FILES';
     }
 
-    console.error(`[${req?.id || 'NO_ID'}] Multer error: ${err.code}`);
+    logger.error('MULTER_ERROR', {
+      requestId: req?.id,
+      code: err.code,
+      ip: getClientIp(req)
+    });
+
     return res.status(statusCode).json({ 
       error: message,
       code,
@@ -642,6 +1052,12 @@ app.use((err, req, res, next) => {
   }
 
   if (err && err.message) {
+    logger.error('VALIDATION_ERROR', {
+      requestId: req?.id,
+      error: err.message,
+      ip: getClientIp(req)
+    });
+    
     return res.status(400).json({ 
       error: err.message,
       code: 'VALIDATION_ERROR'
@@ -651,13 +1067,16 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
-// Safe error handler
 app.use((err, req, res, next) => {
   const requestId = req?.id || 'NO_REQUEST_ID';
   const clientIp = getClientIp(req);
   
-  console.error(`[${requestId}] Unhandled error from ${clientIp}:`, 
-                err?.stack || err?.message || err || 'Unknown error');
+  logger.error('UNHANDLED_ERROR', {
+    requestId,
+    ip: clientIp,
+    error: err?.message || 'Unknown error',
+    stack: err?.stack
+  });
 
   const statusCode = err?.statusCode || 500;
   const isDev = NODE_ENV === 'development';
@@ -676,11 +1095,14 @@ app.use((err, req, res, next) => {
   res.status(statusCode).json(response);
 });
 
-// ==========================================
-// 404 Handler (must be last before error handlers)
-// ==========================================
-
+// 404 Handler
 app.use('*', (req, res) => {
+  logger.audit('ROUTE_NOT_FOUND', {
+    path: req.originalUrl,
+    method: req.method,
+    ip: getClientIp(req)
+  });
+  
   res.status(404).json({
     error: 'Route not found',
     path: req.originalUrl,
@@ -694,17 +1116,27 @@ app.use('*', (req, res) => {
 // ==========================================
 
 const server = app.listen(APP_PORT, HOST, () => {
+  logger.audit('SERVER_STARTED', {
+    port: APP_PORT,
+    host: HOST,
+    environment: NODE_ENV,
+    uploadDir: BASE_UPLOAD_DIR,
+    logDir: LOG_DIR
+  });
+
   console.log('\n╔══════════════════════════════════════════════════════════════╗');
-  console.log('║           PrintEase Encryption API (NGINX Mode)           ║');
+  console.log('║           PrintEase Encryption API (Enhanced)              ║');
   console.log('╚══════════════════════════════════════════════════════════════╝\n');
   console.log(`  🔒 API Server: http://${HOST}:${APP_PORT}`);
   console.log(`  🌐 Nginx Proxy: ${NGINX_URL}`);
   console.log(`  📁 Upload Dir: ${BASE_UPLOAD_DIR}`);
+  console.log(`  📋 Log Dir: ${LOG_DIR}`);
   console.log(`  🔐 Encryption: ${ENCRYPTION_ALGORITHM.toUpperCase()}`);
   console.log(`  📄 Max File Size: ${formatBytes(MAX_FILE_BYTES)}`);
   console.log(`  📦 Max Files: ${MAX_FILES}`);
   console.log(`  ⚡ Environment: ${NODE_ENV}`);
   console.log(`  🔄 Trust Proxy: ${app.get('trust proxy')}`);
+  console.log(`  💻 Workers: ${MAX_WORKERS} (CPU cores: ${os.cpus().length})`);
   console.log('\n  ✅ Server started successfully\n');
 });
 
@@ -712,18 +1144,40 @@ const server = app.listen(APP_PORT, HOST, () => {
 function gracefulShutdown(signal) {
   console.log(`\n\n✓ Received ${signal}. Shutting down gracefully...`);
   
+  logger.audit('SERVER_SHUTDOWN', { signal });
+  
   server.close(() => {
     console.log('✓ Node.js server closed');
+    logger.close();
     process.exit(0);
   });
 
   setTimeout(() => {
     console.error('❌ Forced shutdown due to timeout');
+    logger.audit('FORCED_SHUTDOWN', { signal });
+    logger.close();
     process.exit(1);
   }, 10000);
 }
 
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+process.on('uncaughtException', (err) => {
+  logger.error('UNCAUGHT_EXCEPTION', {
+    error: err.message,
+    stack: err.stack
+  });
+  console.error('Uncaught Exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('UNHANDLED_REJECTION', {
+    reason: reason?.message || reason,
+    stack: reason?.stack
+  });
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 module.exports = app;
