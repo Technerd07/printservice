@@ -1,6 +1,7 @@
 <!-- Encryption dashboard: upload / drag-drop UI, pages, color/B&W, notes, binding, encrypt/cancel -->
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -9,6 +10,7 @@
   <!-- CSS stylesheet -->
   <link rel="stylesheet" href="./assets/css/encryptionDashboard.css">
 </head>
+
 <body>
   <main class="encrypt-wrap">
     <h1 class="mb-lg">Encrypt Documents</h1>
@@ -18,7 +20,8 @@
 
       <!-- Dropzone for drag & drop -->
       <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload or drag and drop files">
-        <p><strong>Drag & drop files here</strong> or <button id="btnBrowse" class="btn-ghost" type="button">Browse</button></p>
+        <p><strong>Drag & drop files here</strong> or <button id="btnBrowse" class="btn-ghost"
+            type="button">Browse</button></p>
         <p class="muted">Allowed: PDFs, DOC(X) Files Only — up to 5 files</p>
         <input id="fileInput" type="file" accept=".pdf,.doc,.docx" multiple hidden />
       </div>
@@ -48,7 +51,8 @@
 
             <div class="field">
               <label for="notes">Additional information</label>
-              <textarea id="notes" name="notes" rows="4" placeholder="Any special instructions..." maxlength="500"></textarea>
+              <textarea id="notes" name="notes" rows="4" placeholder="Any special instructions..."
+                maxlength="500"></textarea>
             </div>
           </div>
 
@@ -84,4 +88,5 @@
   <!-- Load encryption script (CORRECTED PATH) -->
   <script src="./assets/js/encryption.js" defer></script>
 </body>
+
 </html>

@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Order Review — PrintEase</title>
+
+  <!-- Global styles -->
+  <link rel="stylesheet" href="./assets/css/orderpage.css">
+</head>
+
+<body>
+  <main class="encrypt-wrap">
+    <h1 class="mb-lg">Order Review & Payment</h1>
+
+    <section class="card" aria-labelledby="order-heading">
+      <h2 id="order-heading" class="small mb-sm">Verify your information</h2>
+
+      <div class="grid-2 mt-lg">
+        <!-- Left: Customer & Delivery Details -->
+        <div>
+          <form id="orderForm" novalidate>
+            <div class="field">
+              <label for="custName">Full name</label>
+              <input id="custName" name="custName" type="text" placeholder="Jane Doe" required />
+            </div>
+
+            <div class="field">
+              <label for="custEmail">Email</label>
+              <input id="custEmail" name="custEmail" type="email" placeholder="jane@example.com" required />
+            </div>
+
+            <div class="field">
+              <label for="custPhone">Phone</label>
+              <input id="custPhone" name="custPhone" type="tel" placeholder="+91 98765 43210" required />
+            </div>
+
+            <div class="field">
+              <label>Delivery / Pickup</label>
+              <div class="binding-options" role="group" aria-label="Delivery or pickup">
+                <label><input type="radio" name="pickup" value="pickup" checked /> Campus pickup</label>
+                <label><input type="radio" name="pickup" value="delivery" /> Home delivery</label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="address">Delivery address (if delivery)</label>
+              <textarea id="address" name="address" rows="3" placeholder="Campus,Building,Street,City,Pincode"></textarea>
+            </div>
+
+            <hr />
+
+            <!-- Print Options Section -->
+            <h3 class="small mb-sm">Print Options</h3>
+
+            <div class="field">
+              <label>Print Type</label>
+              <div class="binding-options" role="group" aria-label="Print type">
+                <label><input type="radio" name="printType" value="bw" checked data-cost="2" /> B&W (₹2/page)</label>
+                <label><input type="radio" name="printType" value="color" data-cost="5" /> Color (₹5/page)</label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="totalPages">Total Pages</label>
+              <input id="totalPages" name="totalPages" type="number" min="1" placeholder="Enter total number of pages" required />
+            </div>
+
+            <div class="field">
+              <label>Binding Options</label>
+              <div class="binding-options" role="group" aria-label="Binding options">
+                <label><input type="radio" name="binding" value="none" checked data-cost="0" /> No binding</label>
+                <label><input type="radio" name="binding" value="soft" data-cost="70" /> Soft bind (₹70)</label>
+                <div class="binding-color-options" id="softBindColorOptions" style="display:none; margin-left: 24px;">
+                  <label><input type="radio" name="softBindColor" value="blue" checked /> Blue</label>
+                  <label><input type="radio" name="softBindColor" value="pink" /> Pink</label>
+                </div>
+                <label><input type="radio" name="binding" value="hard" data-cost="120" /> Hard bind (₹120)</label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Delivery Charge</label>
+              <div class="delivery-charge">₹10</div>
+            </div>
+
+            <hr />
+
+            <h3 class="small mb-sm">Payment method</h3>
+
+            <div class="field">
+              <label>Select payment option</label>
+              <div class="binding-options" role="group" aria-label="Payment method">
+                <label><input type="radio" name="paymentMethod" value="upi" checked /> UPI</label>
+                <label><input type="radio" name="paymentMethod" value="cod" /> Cash on Delivery (COD)</label>
+              </div>
+            </div>
+
+            <div id="upiSection" class="field">
+              <label for="upiId">UPI ID</label>
+              <input id="upiId" name="upiId" type="text" placeholder="yourname@upi" />
+            </div>
+
+            <div id="codSection" class="field" style="display:none">
+              <div class="muted small"
+                style="background: rgba(15,181,165,0.08); padding:10px; border-radius:8px; border-left:3px solid var(--accent-teal)">
+                You will pay ₹<span id="codAmount">0</span> when your order is delivered.
+              </div>
+            </div>
+
+            <div class="controls" style="margin-top:18px">
+              <button id="confirmPay" class="btn-primary" type="submit">Confirm &amp; Proceed</button>
+              <a href="./encryptionDashboard.html" class="btn-cancel"
+                style="text-decoration:none;display:inline-block">Cancel</a>
+            </div>
+          </form>
+        </div>
+
+        <!-- Right: Order summary -->
+        <aside>
+          <div class="field">
+            <label>Order summary</label>
+            <div class="order-summary-box">
+              <div class="summary-row">
+                <div class="muted small">Files</div>
+                <div class="muted small" id="summaryFiles">0</div>
+              </div>
+              <div class="summary-row">
+                <div class="muted small">Pages</div>
+                <div class="muted small" id="summaryPages">0</div>
+              </div>
+              <div class="summary-row">
+                <div class="muted small">Print type</div>
+                <div class="muted small" id="summaryPrintType">B&W</div>
+              </div>
+              <div class="summary-row">
+                <div class="muted small">Print cost</div>
+                <div class="muted small" id="summaryPrintCost">₹0</div>
+              </div>
+              <div class="summary-row">
+                <div class="muted small">Binding</div>
+                <div class="muted small" id="summaryBinding">No binding</div>
+              </div>
+              <div class="summary-row">
+                <div class="muted small">Binding cost</div>
+                <div class="muted small" id="summaryBindingCost">₹0</div>
+              </div>
+              <div class="summary-row">
+                <div class="muted small">Delivery</div>
+                <div class="muted small" id="summaryDelivery">Campus pickup</div>
+              </div>
+              <div class="summary-row">
+                <div class="muted small">Delivery charge</div>
+                <div class="muted small" id="summaryDeliveryCharge">₹0</div>
+              </div>
+              <div class="summary-row">
+                <div>Total amount</div>
+                <div id="summaryTotal">₹0</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="field small muted" style="margin-top:12px">
+            <strong>Note:</strong> Please verify all details before confirming. Payment integration coming soon.
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <div id="orderStatus" class="muted small" aria-live="polite" style="margin-top:12px"></div>
+  </main>
+
+  <script>
+    // Pricing configuration (easily changeable)
+    const PRICING = {
+      printCost: {
+        bw: 2,      // ₹2 per page for B&W
+        color: 5    // ₹5 per page for Color
+      },
+      binding: {
+        none: 0,
+        soft: 70,   // ₹70 for soft binding
+        hard: 120   // ₹120 for hard binding
+      },
+      delivery: {
+        pickup: 0,
+        delivery: 10 // ₹10 for home delivery
+      }
+    };
+
+    // DOM elements
+    const orderForm = document.getElementById('orderForm');
+    const paymentRadios = document.querySelectorAll('input[name="paymentMethod"]');
+    const upiSection = document.getElementById('upiSection');
+    const codSection = document.getElementById('codSection');
+    const codAmount = document.getElementById('codAmount');
+    const bindingRadios = document.querySelectorAll('input[name="binding"]');
+    const softBindColorOptions = document.getElementById('softBindColorOptions');
+    const printTypeRadios = document.querySelectorAll('input[name="printType"]');
+    const totalPagesInput = document.getElementById('totalPages');
+    const pickupRadios = document.querySelectorAll('input[name="pickup"]');
+    const orderStatus = document.getElementById('orderStatus');
+
+    // Summary elements
+    const summaryFiles = document.getElementById('summaryFiles');
+    const summaryPages = document.getElementById('summaryPages');
+    const summaryPrintType = document.getElementById('summaryPrintType');
+    const summaryPrintCost = document.getElementById('summaryPrintCost');
+    const summaryBinding = document.getElementById('summaryBinding');
+    const summaryBindingCost = document.getElementById('summaryBindingCost');
+    const summaryDelivery = document.getElementById('summaryDelivery');
+    const summaryDeliveryCharge = document.getElementById('summaryDeliveryCharge');
+    const summaryTotal = document.getElementById('summaryTotal');
+
+    // Update order summary
+    function updateOrderSummary() {
+      // Get values
+      const printType = document.querySelector('input[name="printType"]:checked').value;
+      const totalPages = parseInt(totalPagesInput.value) || 0;
+      const binding = document.querySelector('input[name="binding"]:checked').value;
+      const pickup = document.querySelector('input[name="pickup"]:checked').value;
+
+      // Calculate costs
+      const printCost = totalPages * PRICING.printCost[printType];
+      const bindingCost = PRICING.binding[binding];
+      const deliveryCharge = PRICING.delivery[pickup];
+      const total = printCost + bindingCost + deliveryCharge;
+
+      // Update summary
+      summaryPages.textContent = totalPages;
+      summaryPrintType.textContent = printType === 'bw' ? 'B&W' : 'Color';
+      summaryPrintCost.textContent = `₹${printCost}`;
+      
+      // Update binding info
+      if (binding === 'none') {
+        summaryBinding.textContent = 'No binding';
+      } else if (binding === 'soft') {
+        const color = document.querySelector('input[name="softBindColor"]:checked').value;
+        summaryBinding.textContent = `Soft bind (${color})`;
+      } else {
+        summaryBinding.textContent = 'Hard bind';
+      }
+      summaryBindingCost.textContent = `₹${bindingCost}`;
+      
+      // Update delivery info
+      summaryDelivery.textContent = pickup === 'pickup' ? 'Campus pickup' : 'Home delivery';
+      summaryDeliveryCharge.textContent = `₹${deliveryCharge}`;
+      
+      // Update total
+      summaryTotal.textContent = `₹${total}`;
+      
+      // Update COD amount if COD is selected
+      if (document.querySelector('input[name="paymentMethod"]:checked').value === 'cod') {
+        codAmount.textContent = total;
+      }
+    }
+
+    // Event listeners
+    paymentRadios.forEach(radio => {
+      radio.addEventListener('change', function () {
+        if (this.value === 'upi') {
+          upiSection.style.display = 'block';
+          codSection.style.display = 'none';
+        } else {
+          upiSection.style.display = 'none';
+          codSection.style.display = 'block';
+        }
+      });
+    });
+
+    bindingRadios.forEach(radio => {
+      radio.addEventListener('change', function () {
+        if (this.value === 'soft') {
+          softBindColorOptions.style.display = 'block';
+        } else {
+          softBindColorOptions.style.display = 'none';
+        }
+        updateOrderSummary();
+      });
+    });
+
+    // Add event listeners for all inputs that affect the price
+    printTypeRadios.forEach(radio => {
+      radio.addEventListener('change', updateOrderSummary);
+    });
+
+    totalPagesInput.addEventListener('input', updateOrderSummary);
+
+    pickupRadios.forEach(radio => {
+      radio.addEventListener('change', updateOrderSummary);
+    });
+
+    // Soft bind color change
+    document.querySelectorAll('input[name="softBindColor"]').forEach(radio => {
+      radio.addEventListener('change', updateOrderSummary);
+    });
+
+    // Form submission
+    orderForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      
+      // Validate form
+      if (!orderForm.checkValidity()) {
+        orderForm.reportValidity();
+        return;
+      }
+      
+      // Show success message
+      orderStatus.innerHTML = `
+        <div class="success-message" style="background: rgba(34, 197, 94, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #22c55e; color: #166534;">
+          <strong>Order placed!</strong> We will notify you when your delivery is ready for service.
+          <div style="margin-top: 8px; font-size: 0.9rem;">Thank you :)</div>
+        </div>
+      `;
+      
+      // Disable form
+      const submitButton = document.getElementById('confirmPay');
+      submitButton.disabled = true;
+      submitButton.textContent = 'Processing...';
+      
+      // In a real application, you would send this data to your server here
+      console.log('Order submitted:', {
+        customerName: document.getElementById('custName').value,
+        email: document.getElementById('custEmail').value,
+        phone: document.getElementById('custPhone').value,
+        pickup: document.querySelector('input[name="pickup"]:checked').value,
+        address: document.getElementById('address').value,
+        printType: document.querySelector('input[name="printType"]:checked').value,
+        totalPages: totalPagesInput.value,
+        binding: document.querySelector('input[name="binding"]:checked').value,
+        softBindColor: document.querySelector('input[name="softBindColor"]:checked').value,
+        paymentMethod: document.querySelector('input[name="paymentMethod"]:checked').value,
+        upiId: document.getElementById('upiId').value,
+        totalAmount: summaryTotal.textContent
+      });
+      
+      // Simulate server response
+      setTimeout(() => {
+        submitButton.textContent = 'Order Confirmed';
+        submitButton.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
+      }, 1500);
+    });
+
+    // Initialize
+    updateOrderSummary();
+  </script>
+</body>
+
+</html>
