@@ -14,7 +14,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const { Worker } = require('worker_threads');
 const os = require('os');
-
+const authRoutes = require('./authRoutes');
 // ==========================================
 // Configuration & Security Constants
 // ==========================================
@@ -654,7 +654,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Cookie parsing
 app.use(cookieParser());
-
+app.use('/api/auth',authRoutes);
 // Rate limiting
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
